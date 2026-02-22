@@ -1,8 +1,8 @@
-import aiohttp
+from huggingface_hub import InferenceClient
 import os
 
 HF_TOKEN = os.getenv("HF_TOKEN")
-HF_API_URL = "https://api-inference.huggingface.co/models"
+client = InferenceClient(token=HF_TOKEN)
 
 # Модель без цензуры (бесплатно)
 MODEL_NAME = "mistralai/Mistral-7B-Instruct-v0.3"
@@ -35,15 +35,15 @@ STYLES = {
 
 async def describe_image(image_url: str) -> str:
     try:
-        url = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large"
-        headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+        # Используем ту же библиотеку для картинок
+        client_img = InferenceClient(token=HF_TOKEN)
+        # Загружаем картинку
         async with aiohttp.ClientSession() as session:
             async with session.get(image_url) as resp:
                 image_data = await resp.read()
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, data=image_data, headers=headers) as resp:
-                result = await resp.json()
-                return result[0]['generated_text'] if result else "Картинка"
+        # Отправляем на распознавание
+        result = client_img.image_to_text(image_data, model="Salesforce/blip-image-captioning-large")
+        return result[0]['generated_text'] if result else "Картинка"
     except:
         return "Картинка (не распознано)"
 
@@ -73,31 +73,13 @@ async def generate_digest_text(messages: list, style: str = 'hardcore', chat_id:
 [/INST]"""
     
     try:
-        headers = {
-            "Authorization": f"Bearer {HF_TOKEN}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "inputs": prompt,
-            "parameters": {
-                "max_new_tokens": 4000,
-                "temperature": 0.9,
-                "top_p": 0.95,
-                "return_full_text": False
-            }
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{HF_API_URL}/{MODEL_NAME}",
-                json=payload,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=60)
-            ) as resp:
-                result = await resp.json()
-                if isinstance(result, list) and len(result) > 0:
-                    return result[0]['generated_text']
-                return f"❌ Ошибка ИИ: {result}"
+        response = client.chat_completion(
+            messages=[{"role": "user", "content": prompt}],
+            model=MODEL_NAME,
+            max_tokens=4000,
+            temperature=0.9
+        )
+        return response.choices[0].message.content
     except Exception as e:
         return f"❌ Ошибка ИИ: {e}"
 
@@ -114,30 +96,12 @@ async def ai_answer(question: str, context: str, style: str):
 [/INST]"""
     
     try:
-        headers = {
-            "Authorization": f"Bearer {HF_TOKEN}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "inputs": prompt,
-            "parameters": {
-                "max_new_tokens": 1000,
-                "temperature": 0.9,
-                "top_p": 0.95,
-                "return_full_text": False
-            }
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{HF_API_URL}/{MODEL_NAME}",
-                json=payload,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=60)
-            ) as resp:
-                result = await resp.json()
-                if isinstance(result, list) and len(result) > 0:
-                    return result[0]['generated_text']
-                return f"Ошибка: {result}"
+        response = client.chat_completion(
+            messages=[{"role": "user", "content": prompt}],
+            model=MODEL_NAME,
+            max_tokens=1000,
+            temperature=0.9
+        )
+        return response.choices[0].message.content
     except Exception as e:
         return f"Ошибка: {e}"
