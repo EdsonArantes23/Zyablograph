@@ -42,12 +42,12 @@ async def cmd_start(message: Message):
 📋 <b>Настроенные чаты:</b>
 {chats_list}
 
-📝 <b>Команды (только в ЛС):</b>
-• /addchat [ID] [топик] - добавить чат (топик = КУДА слать отчет)
+📝 <b>Команды (только в ЛС для админа):</b>
+• /addchat [ID] [топик] - добавить чат для анализа
 • /removechat [ID] - удалить чат
 • /list - показать все чаты
 • /style [ID] [стиль] - установить стиль
-• /topic [ID] [топик] - изменить топик для ОТПРАВКИ
+• /topic [ID] [топик] - установить топик для отправки
 • /enable [ID] - включить чат
 • /disable [ID] - выключить чат
 • /settime [ID] [HH:MM] - время дайджеста
@@ -55,7 +55,10 @@ async def cmd_start(message: Message):
 • /test [ID] - тестовый дайджест
 • /status - статус бота
 
-⚠️ Важно: Бот читает ВСЕ ветки форума, но отчет шлет в одну!
+🗣 <b>Команды для всех (в чате):</b>
+• /ask [вопрос] - задать вопрос боту (саркастический ответ)
+• @Зяблограф [вопрос] - упомянуть бота для ответа
+
 ⏰ Время по умолчанию: {config.DIGEST_HOUR}:{config.DIGEST_MINUTE} UTC
 """
     await message.answer(text)
@@ -68,30 +71,33 @@ async def cmd_help(message: Message):
     text = """
 📚 <b>Справка по командам:</b>
 
-<b>📋 Управление чатами:</b>
+<b>📋 Управление чатами (ТОЛЬКО АДМИН В ЛС):</b>
 • /addchat [ID] [топик] - добавить чат
-  (ID = группа, Топик = КУДА отправлять дайджест)
 • /removechat [ID] - удалить чат
 • /list - показать все чаты
 • /enable [ID] - включить чат
 • /disable [ID] - выключить чат
 
-<b>⚙️ Настройки:</b>
+<b>⚙️ Настройки (ТОЛЬКО АДМИН В ЛС):</b>
 • /style [ID] [стиль] - hardcore, classic, neutral, love, custom
-• /topic [ID] [топик] - изменить топик для ОТПРАВКИ отчета
+• /topic [ID] [топик] - топик для отправки дайджеста
 • /settime [ID] [HH:MM] - время дайджеста (UTC)
 
-<b>👤 Пользователи:</b>
+<b>👤 Пользователи (ТОЛЬКО АДМИН В ЛС):</b>
 • /nickname [текст] - установить ник пользователю
   (Ответьте на сообщение в группе, затем напишите в ЛС боту)
 
-<b>🧪 Тестирование:</b>
+<b>🗣 Вопросы (ВСЕ В ЧАТЕ + АДМИН В ЛС):</b>
+• /ask [вопрос] - задать вопрос боту (саркастический ответ)
+• @Зяблограф [вопрос] - упомянуть бота для ответа
+
+<b>🧪 Тестирование (ТОЛЬКО АДМИН В ЛС):</b>
 • /test [ID] - тестовый дайджест
 • /status - статус бота
 
-⚠️ Все команды работают ТОЛЬКО в личных сообщениях!
-🔒 Доступ только для админа (ID: 417850992)
-ℹ️ Бот анализирует ВСЕ ветки форума, но отчет шлет в указанную!
+⚠️ Команды настройки работают ТОЛЬКО в личных сообщениях!
+🔒 Доступ к настройкам только для админа (ID: 417850992)
+ℹ️ Команда /ask доступна всем в чате!
 """
     await message.answer(text)
 
@@ -102,7 +108,7 @@ async def cmd_addchat(message: Message):
     
     args = message.text.split()
     if len(args) < 2:
-        return await message.answer("❌ Использование: /addchat [ID_чата] [ID_топика]\nПример: /addchat -1001234567890 1\n⚠️ Топик нужен только для ОТПРАВКИ отчета!")
+        return await message.answer("❌ Использование: /addchat [ID_чата] [ID_топика]\nПример: /addchat -1001234567890 1")
     
     chat_id = int(args[1])
     topic_id = int(args[2]) if len(args) > 2 else 1
@@ -288,6 +294,40 @@ async def cmd_status(message: Message):
 """
     await message.answer(text)
 
+@dp.message(Command("ask"))
+async def cmd_ask(message: Message):
+    question = message.text.replace("/ask", "").strip()
+    
+    if not question:
+        return await message.answer("❌ Задай вопрос! Пример: /ask кто тут главный?")
+    
+    if message.chat.type == 'private':
+        if message.from_user.id != config.ADMIN_ID:
+            return await message.answer("❌ В ЛС эта команда доступна только админу!")
+        chat_id = config.MAIN_CHAT_ID if hasattr(config, 'MAIN_CHAT_ID') else -1002977868330
+    else:
+        chat_id = message.chat.id
+    
+    chat_config = await db.get_chat_config(chat_id)
+    if not chat_config:
+        style = 'hardcore'
+    else:
+        style = chat_config[2]
+    
+    try:
+        history = await bot.get_chat_history(chat_id, limit=10)
+        context = "\n".join([
+            f"{m.from_user.first_name if m.from_user else 'Bot'}: {m.text or ''}" 
+            for m in history 
+            if m.text and not m.from_user.is_bot
+        ])
+    except:
+        context = ""
+    
+    await message.reply("🤔 Думаю, блять...")
+    answer = await ai_service.ai_answer(question, context, style)
+    await message.answer(answer)
+
 @dp.message(F.bot_mentioned)
 async def ai_mention(message: Message):
     chat_config = await db.get_chat_config(message.chat.id)
@@ -297,10 +337,13 @@ async def ai_mention(message: Message):
     style = chat_config[2]
     question = message.text.replace(f"@{bot.username}", "").strip()
     
+    if not question:
+        return await message.answer("❌ Тыкнул и молчишь? Спрашивай давай!")
+    
     history = await bot.get_chat_history(message.chat.id, limit=10)
     context = "\n".join([f"{m.from_user.first_name if m.from_user else 'Bot'}: {m.text or ''}" for m in history if m.text])
     
-    await message.reply("🤔 Думаю...")
+    await message.reply("🤔 Думаю, блять...")
     answer = await ai_service.ai_answer(question, context, style)
     await message.answer(answer)
 
