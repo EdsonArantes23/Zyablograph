@@ -16,16 +16,13 @@ async def collect_messages(bot: Bot, chat_id: int, limit_per_topic: int = 50):
     logger.info(f"[{chat_id}] Начало сбора сообщений...")
     
     try:
-        # АЛЬТЕРНАТИВА get_forum_topics - читаем из основного чата
-        # В форумах это автоматически собирает сообщения из всех топиков
         history = await bot.get_chat_history(
             chat_id=chat_id,
-            limit=limit_per_topic * 10  # Увеличиваем лимит для компенсации
+            limit=limit_per_topic * 10
         )
         
         logger.info(f"[{chat_id}] Получено сообщений: {len(history)}")
         
-        # Группируем по топикам
         topics_dict = {}
         
         for msg in history:
@@ -36,7 +33,6 @@ async def collect_messages(bot: Bot, chat_id: int, limit_per_topic: int = 50):
             if msg.service:
                 continue
             
-            # Получаем ID топика (для главного топика = 1)
             topic_id = msg.message_thread_id if hasattr(msg, 'message_thread_id') else 1
             
             if topic_id not in topics_dict:
@@ -45,7 +41,6 @@ async def collect_messages(bot: Bot, chat_id: int, limit_per_topic: int = 50):
         
         logger.info(f"[{chat_id}] Найдено топиков: {len(topics_dict)}")
         
-        # Обрабатываем сообщения из каждого топика
         for topic_id, topic_messages in topics_dict.items():
             for msg in topic_messages[:limit_per_topic]:
                 user_name = msg.from_user.username or msg.from_user.first_name or "Аноним"
@@ -93,7 +88,6 @@ async def send_daily_digest(bot: Bot, chat_id: int, topic_id: int, style: str):
     
     messages = await collect_messages(bot, chat_id)
     
-    # ИЗМЕНЕНО: Минимум 1 сообщение вместо 5
     if len(messages) < 1:
         logger.warning(f"[{chat_id}] Слишком мало сообщений ({len(messages)}) для дайджеста")
         return
