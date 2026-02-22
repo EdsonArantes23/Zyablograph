@@ -304,7 +304,7 @@ async def cmd_ask(message: Message):
     if message.chat.type == 'private':
         if message.from_user.id != config.ADMIN_ID:
             return await message.answer("❌ В ЛС эта команда доступна только админу!")
-        chat_id = config.MAIN_CHAT_ID if hasattr(config, 'MAIN_CHAT_ID') else -1002977868330
+        chat_id = -1002977868330
     else:
         chat_id = message.chat.id
     
