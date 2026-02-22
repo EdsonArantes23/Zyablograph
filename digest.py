@@ -93,13 +93,7 @@ async def send_daily_digest(bot: Bot, chat_id: int, topic_id: int, style: str):
         return
     
     logger.info(f"[{chat_id}] Генерация текста (стиль: {style})...")
-    digest_text = await ai_service.generate_digest_text(
-        messages, 
-        style, 
-        chat_id,
-        config.SPONSOR_TEXT,
-        config.SPONSOR_LINK
-    )
+    digest_text = await ai_service.generate_digest_text(messages, style, chat_id)
     
     if not digest_text or digest_text.startswith("❌"):
         logger.error(f"[{chat_id}] Ошибка генерации текста: {digest_text}")
