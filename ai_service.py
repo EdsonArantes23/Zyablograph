@@ -1,12 +1,15 @@
-from groq import AsyncGroq
 import aiohttp
 import os
 
-client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+HF_TOKEN = os.getenv("HF_TOKEN")
+HF_API_URL = "https://api-inference.huggingface.co/models"
+
+# Модель без цензуры (бесплатно)
+MODEL_NAME = "mistralai/Mistral-7B-Instruct-v0.3"
 
 STYLES = {
     'hardcore': """
-ТЫ — АГРЕССИВНЫЙ, САТИРИЧЕСКИЙ ОБОЗРЕВАТЕЛЬ ЧАТА В СТИЛЕ "ВЕСТНИК ИНДИХУЯКЕР".
+Ты — сатирический обозреватель чата в стиле "Вестник Индихуякер".
 
 ПРАВИЛА:
 1. Пиши с сарказмом, юмором и сленгом.
@@ -33,11 +36,12 @@ STYLES = {
 async def describe_image(image_url: str) -> str:
     try:
         url = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-large"
+        headers = {"Authorization": f"Bearer {HF_TOKEN}"}
         async with aiohttp.ClientSession() as session:
             async with session.get(image_url) as resp:
                 image_data = await resp.read()
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, data=image_data) as resp:
+            async with session.post(url, data=image_data, headers=headers) as resp:
                 result = await resp.json()
                 return result[0]['generated_text'] if result else "Картинка"
     except:
@@ -53,8 +57,7 @@ async def generate_digest_text(messages: list, style: str = 'hardcore', chat_id:
     
     chat_link = str(abs(chat_id)).replace('100', '')
     
-    prompt = f"""
-{system_prompt}
+    prompt = f"""<s>[INST] {system_prompt}
 
 ШАБЛОН ВЫВОДА:
 📰 Главное из последних 1000 сообщений, отправленных за последние 24 часа по чату:
@@ -67,34 +70,74 @@ async def generate_digest_text(messages: list, style: str = 'hardcore', chat_id:
 {history}
 
 ВЫБЕРИ ТОП-9 САМЫХ ИНТЕРЕСНЫХ/СМЕШНЫХ/СКАНДАЛЬНЫХ МОМЕНТОВ И ОПИШИ ИХ В СТИЛЕ ВЫШЕ.
-"""
+[/INST]"""
     
     try:
-        response = await client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.9,
-            max_tokens=4000
-        )
-        return response.choices[0].message.content
+        headers = {
+            "Authorization": f"Bearer {HF_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "inputs": prompt,
+            "parameters": {
+                "max_new_tokens": 4000,
+                "temperature": 0.9,
+                "top_p": 0.95,
+                "return_full_text": False
+            }
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{HF_API_URL}/{MODEL_NAME}",
+                json=payload,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=60)
+            ) as resp:
+                result = await resp.json()
+                if isinstance(result, list) and len(result) > 0:
+                    return result[0]['generated_text']
+                return f"❌ Ошибка ИИ: {result}"
     except Exception as e:
         return f"❌ Ошибка ИИ: {e}"
 
 async def ai_answer(question: str, context: str, style: str):
     system_prompt = STYLES.get(style, STYLES['hardcore'])
+    
+    prompt = f"""<s>[INST] {system_prompt}
+
+Контекст чата: {context}
+
+Вопрос: {question}
+
+Ответь в сатирическом стиле с юмором.
+[/INST]"""
+    
     try:
-        response = await client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": f"{system_prompt}\nКонтекст: {context}"},
-                {"role": "user", "content": question}
-            ],
-            temperature=0.9,
-            max_tokens=1000
-        )
-        return response.choices[0].message.content
+        headers = {
+            "Authorization": f"Bearer {HF_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "inputs": prompt,
+            "parameters": {
+                "max_new_tokens": 1000,
+                "temperature": 0.9,
+                "top_p": 0.95,
+                "return_full_text": False
+            }
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{HF_API_URL}/{MODEL_NAME}",
+                json=payload,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=60)
+            ) as resp:
+                result = await resp.json()
+                if isinstance(result, list) and len(result) > 0:
+                    return result[0]['generated_text']
+                return f"Ошибка: {result}"
     except Exception as e:
         return f"Ошибка: {e}"
