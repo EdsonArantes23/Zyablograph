@@ -71,7 +71,7 @@ async def generate_digest_text(messages: list, style: str = 'hardcore', chat_id:
     
     try:
         response = await client.chat.completions.create(
-            model="llama-3.1-8b-instant",  # Модель стабильнее и бесплатна
+            model="llama-3.1-8b-instant",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
