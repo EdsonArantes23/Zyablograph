@@ -16,60 +16,73 @@ async def collect_messages(bot: Bot, chat_id: int, limit_per_topic: int = 50):
     logger.info(f"[{chat_id}] Начало сбора сообщений...")
     
     try:
-        topics = await bot.get_forum_topics(chat_id=chat_id)
-        logger.info(f"[{chat_id}] Найдено топиков: {len(topics)}")
+        # АЛЬТЕРНАТИВА get_forum_topics - читаем из основного чата
+        # В форумах это автоматически собирает сообщения из всех топиков
+        history = await bot.get_chat_history(
+            chat_id=chat_id,
+            limit=limit_per_topic * 10  # Увеличиваем лимит для компенсации
+        )
         
-        for topic in topics:
-            topic_id = topic.message_thread_id
+        logger.info(f"[{chat_id}] Получено сообщений: {len(history)}")
+        
+        # Группируем по топикам
+        topics_dict = {}
+        
+        for msg in history:
+            if msg.date < yesterday:
+                continue
+            if msg.from_user and msg.from_user.is_bot:
+                continue
+            if msg.service:
+                continue
             
-            try:
-                history = await bot.get_chat_history(
-                    chat_id=chat_id,
-                    message_thread_id=topic_id,
-                    limit=limit_per_topic
-                )
+            # Получаем ID топика (для главного топика = 1)
+            topic_id = msg.message_thread_id if hasattr(msg, 'message_thread_id') else 1
+            
+            if topic_id not in topics_dict:
+                topics_dict[topic_id] = []
+            topics_dict[topic_id].append(msg)
+        
+        logger.info(f"[{chat_id}] Найдено топиков: {len(topics_dict)}")
+        
+        # Обрабатываем сообщения из каждого топика
+        for topic_id, topic_messages in topics_dict.items():
+            for msg in topic_messages[:limit_per_topic]:
+                user_name = msg.from_user.username or msg.from_user.first_name or "Аноним"
                 
-                for msg in history:
-                    if msg.date < yesterday:
-                        continue
-                    if msg.from_user and msg.from_user.is_bot:
-                        continue
-                    if msg.service:
-                        continue
-                        
-                    user_name = msg.from_user.username or msg.from_user.first_name or "Аноним"
-                    
-                    custom_nick = await db.get_user_nickname(chat_id, msg.from_user.id)
-                    if custom_nick:
-                        user_name = custom_nick
-                    
-                    text = msg.text or msg.caption or ""
-                    image_desc = None
-                    
-                    if msg.photo:
+                custom_nick = await db.get_user_nickname(chat_id, msg.from_user.id)
+                if custom_nick:
+                    user_name = custom_nick
+                
+                text = msg.text or msg.caption or ""
+                image_desc = None
+                
+                if msg.photo:
+                    try:
                         file = await bot.get_file(msg.photo[-1].file_id)
                         file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
                         image_desc = await ai_service.describe_image(file_url)
                         if not text:
                             text = "[Отправил фото]"
-                    
-                    messages.append({
-                        'user': user_name,
-                        'text': text,
-                        'id': msg.message_id,
-                        'topic_id': topic_id,
-                        'image_desc': image_desc,
-                        'date': msg.date
-                    })
-                    
-                    await db.mark_message_processed(
-                        chat_id, msg.message_id, topic_id, int(msg.date.timestamp())
-                    )
-            except Exception as e:
-                logger.error(f"[{chat_id}] Ошибка чтения топика {topic_id}: {e}")
+                    except Exception as e:
+                        logger.warning(f"Ошибка описания картинки: {e}")
+                        image_desc = "Картинка (не распознано)"
+                
+                messages.append({
+                    'user': user_name,
+                    'text': text,
+                    'id': msg.message_id,
+                    'topic_id': topic_id,
+                    'image_desc': image_desc,
+                    'date': msg.date
+                })
+                
+                await db.mark_message_processed(
+                    chat_id, msg.message_id, topic_id, int(msg.date.timestamp())
+                )
     
     except Exception as e:
-        logger.error(f"[{chat_id}] Ошибка получения списка топиков: {e}")
+        logger.error(f"[{chat_id}] Ошибка сбора сообщений: {e}")
     
     messages.sort(key=lambda x: x['date'], reverse=True)
     logger.info(f"[{chat_id}] Всего собрано сообщений: {len(messages)}")
@@ -80,7 +93,7 @@ async def send_daily_digest(bot: Bot, chat_id: int, topic_id: int, style: str):
     
     messages = await collect_messages(bot, chat_id)
     
-    # ИЗМЕНЕНО: Минимум 1 сообщение вместо 5 (для теста)
+    # ИЗМЕНЕНО: Минимум 1 сообщение вместо 5
     if len(messages) < 1:
         logger.warning(f"[{chat_id}] Слишком мало сообщений ({len(messages)}) для дайджеста")
         return
