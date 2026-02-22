@@ -6,8 +6,8 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 # НОВЫЙ ENDPOINT (обновлённый адрес)
 HF_API_URL = "https://router.huggingface.co/v1"
 
-# Модель без цензуры (бесплатно)
-MODEL_NAME = "mistralai/Mistral-7B-Instruct-v0.3"
+# РАБОЧАЯ МОДЕЛЬ (поддерживает chat completions)
+MODEL_NAME = "meta-llama/Llama-3.1-8B-Instruct"
 
 STYLES = {
     'hardcore': """
@@ -59,7 +59,7 @@ async def generate_digest_text(messages: list, style: str = 'hardcore', chat_id:
     
     chat_link = str(abs(chat_id)).replace('100', '')
     
-    prompt = f"""<s>[INST] {system_prompt}
+    prompt = f"""{system_prompt}
 
 ШАБЛОН ВЫВОДА:
 📰 Главное из последних 1000 сообщений, отправленных за последние 24 часа по чату:
@@ -72,7 +72,7 @@ async def generate_digest_text(messages: list, style: str = 'hardcore', chat_id:
 {history}
 
 ВЫБЕРИ ТОП-9 САМЫХ ИНТЕРЕСНЫХ/СМЕШНЫХ/СКАНДАЛЬНЫХ МОМЕНТОВ И ОПИШИ ИХ В СТИЛЕ ВЫШЕ.
-[/INST]"""
+"""
     
     try:
         headers = {
@@ -81,7 +81,10 @@ async def generate_digest_text(messages: list, style: str = 'hardcore', chat_id:
         }
         payload = {
             "model": MODEL_NAME,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"ИСТОРИЯ ЧАТА ДЛЯ АНАЛИЗА:\n{history}\n\nВЫБЕРИ ТОП-9 САМЫХ ИНТЕРЕСНЫХ МОМЕНТОВ И ОПИШИ ИХ В СТИЛЕ ВЫШЕ."}
+            ],
             "max_tokens": 4000,
             "temperature": 0.9
         }
@@ -103,14 +106,14 @@ async def generate_digest_text(messages: list, style: str = 'hardcore', chat_id:
 async def ai_answer(question: str, context: str, style: str):
     system_prompt = STYLES.get(style, STYLES['hardcore'])
     
-    prompt = f"""<s>[INST] {system_prompt}
+    prompt = f"""{system_prompt}
 
 Контекст чата: {context}
 
 Вопрос: {question}
 
 Ответь в сатирическом стиле с юмором.
-[/INST]"""
+"""
     
     try:
         headers = {
@@ -119,7 +122,10 @@ async def ai_answer(question: str, context: str, style: str):
         }
         payload = {
             "model": MODEL_NAME,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question}
+            ],
             "max_tokens": 1000,
             "temperature": 0.9
         }
