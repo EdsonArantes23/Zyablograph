@@ -43,11 +43,11 @@ async def cmd_start(message: Message):
 {chats_list}
 
 📝 <b>Команды (только в ЛС):</b>
-• /addchat [ID] [топик] - добавить чат для анализа
+• /addchat [ID] [топик] - добавить чат (топик = КУДА слать отчет)
 • /removechat [ID] - удалить чат
 • /list - показать все чаты
 • /style [ID] [стиль] - установить стиль
-• /topic [ID] [топик] - установить топик для отправки
+• /topic [ID] [топик] - изменить топик для ОТПРАВКИ
 • /enable [ID] - включить чат
 • /disable [ID] - выключить чат
 • /settime [ID] [HH:MM] - время дайджеста
@@ -55,6 +55,7 @@ async def cmd_start(message: Message):
 • /test [ID] - тестовый дайджест
 • /status - статус бота
 
+⚠️ Важно: Бот читает ВСЕ ветки форума, но отчет шлет в одну!
 ⏰ Время по умолчанию: {config.DIGEST_HOUR}:{config.DIGEST_MINUTE} UTC
 """
     await message.answer(text)
@@ -69,6 +70,7 @@ async def cmd_help(message: Message):
 
 <b>📋 Управление чатами:</b>
 • /addchat [ID] [топик] - добавить чат
+  (ID = группа, Топик = КУДА отправлять дайджест)
 • /removechat [ID] - удалить чат
 • /list - показать все чаты
 • /enable [ID] - включить чат
@@ -76,7 +78,7 @@ async def cmd_help(message: Message):
 
 <b>⚙️ Настройки:</b>
 • /style [ID] [стиль] - hardcore, classic, neutral, love, custom
-• /topic [ID] [топик] - топик для отправки дайджеста
+• /topic [ID] [топик] - изменить топик для ОТПРАВКИ отчета
 • /settime [ID] [HH:MM] - время дайджеста (UTC)
 
 <b>👤 Пользователи:</b>
@@ -89,6 +91,7 @@ async def cmd_help(message: Message):
 
 ⚠️ Все команды работают ТОЛЬКО в личных сообщениях!
 🔒 Доступ только для админа (ID: 417850992)
+ℹ️ Бот анализирует ВСЕ ветки форума, но отчет шлет в указанную!
 """
     await message.answer(text)
 
@@ -99,7 +102,7 @@ async def cmd_addchat(message: Message):
     
     args = message.text.split()
     if len(args) < 2:
-        return await message.answer("❌ Использование: /addchat [ID_чата] [ID_топика]\nПример: /addchat -1001234567890 1")
+        return await message.answer("❌ Использование: /addchat [ID_чата] [ID_топика]\nПример: /addchat -1001234567890 1\n⚠️ Топик нужен только для ОТПРАВКИ отчета!")
     
     chat_id = int(args[1])
     topic_id = int(args[2]) if len(args) > 2 else 1
@@ -107,7 +110,7 @@ async def cmd_addchat(message: Message):
     try:
         chat_info = await bot.get_chat(chat_id)
         await db.add_chat(chat_id, chat_info.title, topic_id)
-        await message.answer(f"✅ Чат <b>{chat_info.title}</b> добавлен!\nТопик: {topic_id}")
+        await message.answer(f"✅ Чат <b>{chat_info.title}</b> добавлен!\n📥 Читать: ВСЕ ветки\n📤 Писать: Ветка {topic_id}")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {e}\nПроверьте что бот добавлен в чат как админ")
 
@@ -138,7 +141,7 @@ async def cmd_list(message: Message):
         chat_id, title, style, topic_id, enabled, hour, minute = c
         status = "🟢" if enabled else "🔴"
         text += f"{status} <b>{title}</b>\n"
-        text += f"   ID: {chat_id} | Топик: {topic_id}\n"
+        text += f"   ID: {chat_id} | 📤 Топик отчета: {topic_id}\n"
         text += f"   Стиль: {style} | Время: {hour}:{minute}\n\n"
     
     await message.answer(text)
@@ -168,13 +171,13 @@ async def cmd_topic(message: Message):
     
     args = message.text.split()
     if len(args) < 3:
-        return await message.answer("❌ Использование: /topic [ID_чата] [ID_топика]")
+        return await message.answer("❌ Использование: /topic [ID_чата] [ID_топика]\n⚠️ Меняет только КУДА отправлять отчет!")
     
     chat_id = int(args[1])
     topic_id = int(args[2])
     
     await db.update_chat_topic(chat_id, topic_id)
-    await message.answer(f"✅ Топик для чата {chat_id} установлен: <b>{topic_id}</b>")
+    await message.answer(f"✅ Топик для ОТПРАВКИ в чате {chat_id} установлен: <b>{topic_id}</b>")
 
 @dp.message(Command("enable"))
 async def cmd_enable(message: Message):
@@ -259,9 +262,15 @@ async def cmd_test(message: Message):
     if not config_chat:
         return await message.answer("❌ Чат не найден в настройках. Добавьте через /addchat")
     
-    await message.answer("🔄 Запускаю тестовый дайджест...")
-    await digest.send_daily_digest(bot, chat_id, config_chat[3], config_chat[2])
-    await message.answer("✅ Дайджест отправлен!")
+    await message.answer("🔄 Запускаю тестовый дайджест...\n📥 Читаю ВСЕ ветки...\n📤 Пишу в ветку {topic_id}".format(topic_id=config_chat[3]))
+    logging.info(f"ADMIN {message.from_user.id} запустил тест для чата {chat_id}")
+    
+    try:
+        await digest.send_daily_digest(bot, chat_id, config_chat[3], config_chat[2])
+        await message.answer("✅ Дайджест отправлен! (Проверьте логи и чат)")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при отправке: {e}")
+        logging.error(f"Ошибка теста: {e}")
 
 @dp.message(Command("status"))
 async def cmd_status(message: Message):
