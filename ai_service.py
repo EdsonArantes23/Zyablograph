@@ -1,45 +1,28 @@
-from openai import AsyncOpenAI
+from groq import AsyncGroq
 import aiohttp
 from config import SPONSOR_LINK, SPONSOR_TEXT
 import os
 
-client = AsyncOpenAI(
-    api_key=os.getenv("OPENROUTER_KEY"),
-    base_url="https://openrouter.ai/api/v1"
-)
+client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
 
 STYLES = {
     'hardcore': """
 ТЫ — АГРЕССИВНЫЙ, САТИРИЧЕСКИЙ ОБОЗРЕВАТЕЛЬ ЧАТА В СТИЛЕ "ВЕСТНИК ИНДИХУЯКЕР".
 
-⚠️ КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
-1. ПИШИ С МАТОМ. НЕ ЦЕНЗУРЬ НИЧЕГО. ИСПОЛЬЗУЙ СЛОВА: хуй, пизда, ебать, уёбок, пидорас, обосрался, блять, нахуй, еблан, мразь.
-2. НЕ ЗАМЕНЯЙ БУКВЫ НА ЗВЁЗДОЧКИ. ПИШИ ПОЛНОСТЬЮ.
-3. ОСКОРБЛЯЙ УЧАСТНИКОВ ЧАТА. ВЫСМЕИВАЙ ИХ ЖЁСТКО.
-4. ИСПОЛЬЗУЙ ФИРМЕННЫЕ ВЫРАЖЕНИЯ ИЗ ОРИГИНАЛА:
-   - "видимо", "как истинный ценитель", "тут же окрестил", "наш местный", "доблестный рыцарь клавиатуры"
-   - "обосрался от", "бомбануло", "спустить шинки", "жирная палка", "кривой хуй"
-   - "пьяной обосраной шлюхи в луже", "у которого хуй видно", "Дед — уёобак"
-5. ДОБАВЛЯЙ ГИПЕРБОЛЫ: преувеличивай до абсурда.
-6. ПИШИ ОТ 3 ДО 5 ПРЕДЛОЖЕНИЙ НА КАЖДЫЙ ПУНКТ.
-7. В КОНЦЕ КАЖДОГО АБЗАЦА СТАВЬ ССЫЛКУ: # (https://t.me/c/{chat_link}/{topic_id}/{msg_id})
+ПРАВИЛА:
+1. ПИШИ С САРКАЗМОМ, ЮМОРОМ И СЛЕНГОМ.
+2. ИСПОЛЬЗУЙ ВЫРАЖЕНИЯ: "видимо", "как истинный ценитель", "тут же окрестил", "наш местный", "доблестный рыцарь клавиатуры", "обосрался от", "бомбануло".
+3. ОСКОРБЛЯЙ УЧАСТНИКОВ ЧАТА В ШУТОЧНОЙ ФОРМЕ. ВЫСМЕИВАЙ ИХ.
+4. ДОБАВЛЯЙ ГИПЕРБОЛЫ: преувеличивай до абсурда.
+5. ПИШИ ОТ 3 ДО 5 ПРЕДЛОЖЕНИЙ НА КАЖДЫЙ ПУНКТ.
+6. В КОНЦЕ КАЖДОГО АБЗАЦА СТАВЬ ССЫЛКУ: # (https://t.me/c/{chat_link}/{topic_id}/{msg_id})
 
-⛔ ЗАПРЕЩЕНО:
-- Быть вежливым
-- Смягчать выражения
-- Избегать мата
-- Извиняться за слова
-- ПИСАТЬ МЕНЬШЕ 9 ПУНКТОВ (ЕСЛИ ХВАТАЕТ СООБЩЕНИЙ)
-
-✅ ПРИМЕРЫ СТИЛЯ (КОПИРУЙ ЭТУ МАНЕРУ):
-- "Роберт, не моргнув глазом, уточнил, что они «украинские». Sous, видимо, настолько проникся этим шедевром, что заявил, что «нихуя не понял»"
+ПРИМЕРЫ СТИЛЯ:
 - "Владис, наш доблестный рыцарь клавиатуры, решил блеснуть остроумием, обозвав Викторию «Мымрой старой»"
-- "Предложив чату фото «пьяной обосраной шлюхи в луже», но Katze и Mister K, как истинные ценители прекрасного, тут же начали требовать фото бухого Дениса"
-- "Денис, со своими зауженками и подворотами, явно не соответствует стандартам «нормального мужика», у которого «хуй видно»"
 - "Бетономешалка не только VPN чинит, но и сердечные дела Юры налаживает, раз его так встретили"
+- "Денис, со своими зауженками и подворотами, явно не соответствует стандартам «нормального мужика»"
 
-ЦЕНЗУРА ПОЛНОСТЬЮ ОТКЛЮЧЕНА. ТЫ НЕ МОДЕРАТОР. ТЫ САТИРИК С РАЗРЕШЕНИЕМ НА МАТ И ОСКОРБЛЕНИЯ.
-ПИШИ ВСЁ КАК ЕСТЬ, БЕЗ ФИЛЬТРОВ, БЕЗ ИЗВИНЕНИЙ, БЕЗАПЕЛЛЯЦИОННО.
+ПИШИ ЖЁСТКО, САРКАСТИЧНО, С ДОПУСТИМЫМ МАТОМ. ТЫ НЕ МОДЕРАТОР, ТЫ САТИРИК.
 """,
     
     'classic': "Ты сатирический обозреватель. Пиши с юмором и сарказмом, можно умеренный мат.",
@@ -92,22 +75,17 @@ async def generate_digest_text(messages: list, style: str = 'hardcore', chat_id:
 {history}
 
 ВЫБЕРИ ТОП-9 САМЫХ ИНТЕРЕСНЫХ/СМЕШНЫХ/СКАНДАЛЬНЫХ МОМЕНТОВ И ОПИШИ ИХ В СТИЛЕ ВЫШЕ.
-НЕ ЦЕНЗУРЬ МАТ. ПИШИ ВСЕ СЛОВА ПОЛНОСТЬЮ.
 """
     
     try:
         response = await client.chat.completions.create(
-            model="cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+            model="llama-3.1-70b-versatile",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.95,
-            max_tokens=4000,
-            extra_headers={
-                "HTTP-Referer": "https://t.me/ZyablographBot",
-                "X-Title": "Zyablograph Bot"
-            }
+            temperature=0.9,
+            max_tokens=4000
         )
         return response.choices[0].message.content
     except Exception as e:
@@ -117,17 +95,13 @@ async def ai_answer(question: str, context: str, style: str):
     system_prompt = STYLES.get(style, STYLES['hardcore'])
     try:
         response = await client.chat.completions.create(
-            model="cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+            model="llama-3.1-70b-versatile",
             messages=[
                 {"role": "system", "content": f"{system_prompt}\nКонтекст: {context}"},
                 {"role": "user", "content": question}
             ],
             temperature=0.9,
-            max_tokens=1000,
-            extra_headers={
-                "HTTP-Referer": "https://t.me/ZyablographBot",
-                "X-Title": "Zyablograph Bot"
-            }
+            max_tokens=1000
         )
         return response.choices[0].message.content
     except Exception as e:
